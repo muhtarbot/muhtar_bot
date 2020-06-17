@@ -1,4 +1,5 @@
 import time
+from datetime import datetime
 
 import praw
 from pymongo import MongoClient, InsertOne, UpdateOne
@@ -21,9 +22,41 @@ def connect_mongodb():
     mongodb = client[DB_NAME]
     return mongodb
 
-def bulk_execute():
-    bulk = db.testdata.initialize_unordered_bulk_op()
+def bulk_write(db, submissions):
     bulk_op_counter = 0
+
+    bulk_write_list = []
+    # author_ids = [submission.author.id for submission in submissions]
+
+    for submission in submissions:
+        author = submission.author
+        url = submission.url
+        now = datetime.utcnow().timestamp()
+
+        metadata = {
+            "author_id": author.id,
+            "post_count": 1,
+            "author": {
+                "name": author.name,
+                "comment_karma": author.comment_karma,
+                "link_karma": author.link_karma,
+                },
+            "time_posted": str(submission.created_utc),
+            "time_added_to_muhtar": str(now)
+        }
+
+        bulk_write_list.append(InsertOne(metadata))
+
+    # UpdateOne({'author_id': 4}, {'$inc': {'post_count': 1}}),
+    # # UpdateOne({'author_id': 4}, {}, upsert=True)
+    # InsertOne({})
+
+    import pdb; pdb.set_trace()  # breakpoint 7dcab235 //
+
+    # for moderator in reddit.subreddit("redditdev").moderator():
+    #     print(moderator)
+    # ======= debug
+    result = db[DB_NAME].bulk_write(bulk_write_list)
 
     # for a_id in ids:
     #     {'author_id': a_id}, {'$inc': {'item': 1}}
@@ -45,8 +78,6 @@ def main():
     # session.verify = path_to_certificate
 
     mongodb = connect_mongodb()
-
-    import pdb; pdb.set_trace()  # breakpoint 6a4608ad //
     reddit = praw.Reddit(**reddit_oauth_info)
 
     # ======= debug
@@ -59,30 +90,12 @@ def main():
     author_updates = []
     archive_upserts = []
 
-
-    for submission in submissions:
-        author = submission.author
-        url = submission.url
-        author = submission.created_utc
-
-        # metadata = {
-        # "author_id": submission.author.id,
-        # "post_count": 1,
-        # "author": {
-        #     "name": submission.author.name,
-        #     "name": submission.author.comment_karma,
-        #     "name": submission.author.link_karma,
-        #     },
-        # }
-
-        # print(submission.author)
-    # for moderator in reddit.subreddit("redditdev").moderator():
-    #     print(moderator)
-    # ======= debug
+    result = bulk_write(mongodb, submissions)
     import pdb; pdb.set_trace()  # breakpoint bafa1701 //
 
-    mongodb.bulk_write(InsertOne(author_metadata_output))
-    mongodb.bulk_write(UpdateOne(author_updates))
+    # mongodb.bulk_write(InsertOne(author_inserts))
+    # mongodb.bulk_write(UpdateOne(author_updates))
 
 if __name__ == '__main__':
     main()
+
