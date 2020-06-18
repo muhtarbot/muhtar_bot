@@ -3,16 +3,18 @@ import json
 from datetime import datetime
 
 import praw
-from pymongo import MongoClient, InsertOne, UpdateOne
-from requests import Session
+from pymongo import MongoClient
 
-TOO_MANY_POSTS_PER_DAY_REPORT_MESSAGE = (
-    'I am https://github.com/muhtarbot/muhtar_bot\nThis person is posting too much.'
-)
+
+DEBUG = False
+REDDIT_OAUTH_JSON_FILEPATH = 'reddit_oauth_info.json'
 SUBREDDIT_NAME = 'istanbul'
 DB_NAME = 'mahalle_db_ristanbul'
 DB_URL = 'mongodb://localhost:27017/'
 ONE_DAY_SECONDS = 86400
+TOO_MANY_POSTS_PER_DAY_REPORT_MESSAGE = (
+    'I am https://github.com/muhtarbot/muhtar_bot\nThis person is posting too much.'
+)
 
 
 def connect_mongodb():
@@ -60,29 +62,28 @@ def process_submission(db, submission):
     return db.insert_one(metadata)
 
 
-def read_reddit_info():
-    with open('reddit_oauth_info.json') as f:
+def read_reddit_oauth_info():
+    with open(REDDIT_OAUTH_JSON_FILEPATH) as f:
         data = json.load(f)
     return data
 
 def main():
-    reddit_oauth_info = read_reddit_info()
+    reddit_oauth_info = read_reddit_oauth_info()
     reddit = praw.Reddit(**reddit_oauth_info)
-
-    print("===========================")
-    print(reddit.user.me())
-    print("===========================")
-
+    if DEBUG:
+        print("===========================")
+        print(reddit.user.me())
+        print("===========================")
+        print('-----------------------------------')
     # submissions = reddit.subreddit("istanbul").new() # for non stream loops
     mongo_mahalle_db = connect_mongodb()
-    print('-----------------------------------')
     for submission in reddit.subreddit(SUBREDDIT_NAME).stream.submissions():
-        print(submission.url)
-        print(submission.author.name)
+        if DEBUG:
+            print(submission.url)
+            print(submission.author.name)
+            print(result)
+            print('-----------------------------------')
         result = process_submission(mongo_mahalle_db, submission)
-        print(result)
-        print('-----------------------------------')
-
 
 if __name__ == '__main__':
     main()
