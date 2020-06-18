@@ -1,5 +1,6 @@
 ![Ring_of_Muhtar](https://i.imgur.com/1XP7j9j.png)
-A subreddit monitoring and metric collecting bot that can also report people who post more than a given amount.
+
+### A subreddit monitoring and metric collecting bot that can also report people who post more than a given amount.
 
 # To run
 ```
