@@ -1,100 +1,88 @@
 import time
+import json
 from datetime import datetime
 
 import praw
 from pymongo import MongoClient, InsertOne, UpdateOne
 from requests import Session
 
-
-reddit_oauth_info = {
-    "client_id": "x1P4KVO8nIt1gw",
-    "client_secret": "3m7cQ6ZH9xjLpE40ywpdlBDy8FE",
-    "password": "wassup_89MUHTAR",
-    "user_agent": "ubuntu:muhtar_bot:0.0.1 (by u/Salyangoz)",
-    "username": "muhtar_bot"
-}
-
+TOO_MANY_POSTS_PER_DAY_REPORT_MESSAGE = (
+    'I am https://github.com/muhtarbot/muhtar_bot\nThis person is posting too much.'
+)
+SUBREDDIT_NAME = 'istanbul'
 DB_NAME = 'mahalle_db_ristanbul'
 DB_URL = 'mongodb://localhost:27017/'
+ONE_DAY_SECONDS = 86400
+
 
 def connect_mongodb():
     client = MongoClient(DB_URL)
     mongodb = client[DB_NAME]
-    return mongodb
+    return mongodb[DB_NAME]
 
-def bulk_write(db, submissions):
-    bulk_op_counter = 0
+def process_submission(db, submission):
+    author = submission.author
+    last_post = db.find_one({'author_id': author.id})
+    post_count = 0
+    if last_post is not None:
+        post_count = last_post['post_count'] + 1
+        submission_time_delta = submission.created_utc - float(last_post['time_posted'])
 
-    bulk_write_list = []
-    # author_ids = [submission.author.id for submission in submissions]
+        if submission_time_delta > ONE_DAY_SECONDS:
+            # they last posted 24 hours ago reset count
+            post_count = 0
+        if post_count > 3 and submission_time_delta < ONE_DAY_SECONDS:
+            # too many posts per day
+            submission.report(TOO_MANY_POSTS_PER_DAY_REPORT_MESSAGE)
 
-    for submission in submissions:
-        author = submission.author
-        url = submission.url
-        now = datetime.utcnow().timestamp()
+    now = datetime.utcnow().timestamp()
 
-        metadata = {
-            "author_id": author.id,
-            "post_count": 1,
-            "author": {
-                "name": author.name,
-                "comment_karma": author.comment_karma,
-                "link_karma": author.link_karma,
-                },
-            "time_posted": str(submission.created_utc),
-            "time_added_to_muhtar": str(now)
-        }
+    if last_post:
+        return db.update_one({'author_id': author.id}, {"$set": {
+            "post_count": post_count,
+            "url": submission.url,
+            "time_posted_utc": str(submission.created_utc),
+            "time_updated": str(now)
+        }})
 
-        bulk_write_list.append(InsertOne(metadata))
+    metadata = {
+        "author_id": author.id,
+        "post_count": 1 if post_count == 0 else post_count,
+        "author": {
+            "name": author.name,
+            "comment_karma": author.comment_karma,
+            "link_karma": author.link_karma,
+            },
+        "url": submission.url,
+        "time_posted": str(submission.created_utc),
+        "time_added_to_muhtar": str(now)
+    }
+    return db.insert_one(metadata)
 
-    # UpdateOne({'author_id': 4}, {'$inc': {'post_count': 1}}),
-    # # UpdateOne({'author_id': 4}, {}, upsert=True)
-    # InsertOne({})
 
-    import pdb; pdb.set_trace()  # breakpoint 7dcab235 //
-
-    # for moderator in reddit.subreddit("redditdev").moderator():
-    #     print(moderator)
-    # ======= debug
-    result = db[DB_NAME].bulk_write(bulk_write_list)
-
-    # for a_id in ids:
-    #     {'author_id': a_id}, {'$inc': {'item': 1}}
-    #     # process in bulk
-    #     bulk.find({ '_id': id }).update({ '$set': { 'isBad': 'N' } })
-    #     bulk_op_counter += 1
-
-    #     if (bulk_op_counter % 500 == 0):
-    #         bulk.execute()
-    #         bulk = db.testdata.initialize_ordered_bulk_op()
-
-    # if (bulk_op_counter % 500 != 0):
-    #     bulk.execute()
-
+def read_reddit_info():
+    with open('reddit_oauth_info.json') as f:
+        data = json.load(f)
+    return data
 
 def main():
-    # session = Session
-    # path_to_certificate = "/mnt/c/Users/snn/Documents/projects/muhtar_bot/certificates/certfile.pem"
-    # session.verify = path_to_certificate
-
-    mongodb = connect_mongodb()
+    reddit_oauth_info = read_reddit_info()
     reddit = praw.Reddit(**reddit_oauth_info)
 
-    # ======= debug
     print("===========================")
     print(reddit.user.me())
+    print("===========================")
 
-    submissions = reddit.subreddit("istanbul").new()
+    # submissions = reddit.subreddit("istanbul").new() # for non stream loops
+    mongo_mahalle_db = connect_mongodb()
+    print('-----------------------------------')
+    for submission in reddit.subreddit(SUBREDDIT_NAME).stream.submissions():
+        print(submission.url)
+        print(submission.author.name)
+        result = process_submission(mongo_mahalle_db, submission)
+        print(result)
+        print('-----------------------------------')
 
-    author_inserts = []
-    author_updates = []
-    archive_upserts = []
-
-    result = bulk_write(mongodb, submissions)
-    import pdb; pdb.set_trace()  # breakpoint bafa1701 //
-
-    # mongodb.bulk_write(InsertOne(author_inserts))
-    # mongodb.bulk_write(UpdateOne(author_updates))
 
 if __name__ == '__main__':
     main()

@@ -130,3 +130,4 @@ dmypy.json
 
 *_env/
 output/*
+reddit_oauth_info.json
